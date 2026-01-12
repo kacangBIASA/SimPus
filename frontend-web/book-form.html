@@ -1,0 +1,241 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>SIMPUS - Book Form</title>
+  <link rel="stylesheet" href="./assets/css/main.css" />
+</head>
+
+<body>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="side-card">
+        <div class="brand">
+          <div class="logo"></div>
+          <div>
+            <div class="brand-title">SIMPUS</div>
+            <div class="brand-sub">Digital Library System</div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a href="./dashboard.html">🏠 Dashboard <small>Home</small></a>
+
+          <!-- Member -->
+          <a id="navBooksMember" href="./books.html" style="display:none;">📚 Katalog Buku <small>Browse</small></a>
+
+          <!-- Admin -->
+          <a id="navBooksAdmin" href="./books.html" style="display:none;">📚 Kelola Buku <small>Manage</small></a>
+
+          <a href="./loans.html">🧾 Loans <small>History</small></a>
+        </nav>
+
+
+        <div class="hr"></div>
+        <div class="muted" id="sideUser">Loading...</div>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div>
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <div class="logo"></div>
+            <div>
+              <div class="brand-title" id="pageTitle">Book Form</div>
+              <div class="brand-sub" id="pageSub">Tambah / Edit buku</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <a class="btn ghost small" href="./books.html">Back to Books</a>
+          <button id="btnLogout" class="btn small">Logout</button>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="container">
+
+          <div id="error" class="error" style="display:none;"></div>
+
+          <div class="grid">
+            <!-- Form -->
+            <div class="card">
+              <h1 id="formTitle">Tambah Buku</h1>
+              <p class="muted" id="formHint">Isi data buku dengan benar.</p>
+
+              <form id="bookForm">
+                <label>Kategori</label>
+                <select id="category_id" required></select>
+
+                <label>Judul</label>
+                <input id="title" required maxlength="200" placeholder="Judul buku" />
+
+                <label>Author</label>
+                <input id="author" required maxlength="120" placeholder="Nama author" />
+
+                <label>ISBN (opsional)</label>
+                <input id="isbn" maxlength="30" placeholder="978-xxxx" />
+
+                <div class="row">
+                  <div style="flex:1; min-width:200px;">
+                    <label>Stock Total</label>
+                    <input id="stock_total" type="number" min="0" required />
+                  </div>
+                  <div style="flex:1; min-width:200px;">
+                    <label>Stock Available</label>
+                    <input id="stock_available" type="number" min="0" required />
+                  </div>
+                </div>
+
+                <div class="row" style="justify-content:flex-start; margin-top:14px;">
+                  <button class="btn small" type="submit" id="btnSave">Simpan</button>
+                  <a class="btn ghost small" href="./books.html">Batal</a>
+                </div>
+              </form>
+            </div>
+
+            <!-- Tips -->
+            <div class="card">
+              <h2>Catatan</h2>
+              <p class="muted">• `stock_available` tidak boleh lebih besar dari `stock_total`.</p>
+              <p class="muted">• ISBN boleh kosong, tapi jika diisi harus unik.</p>
+              <div class="hr"></div>
+              <div class="muted" id="whoami">Memuat user...</div>
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from "./assets/js/guard.js";
+    import { getUser, logout } from "./assets/js/auth.js";
+    import { apiFetch } from "./assets/js/api.js";
+
+    await requireAuth();
+
+    const user = getUser();
+    document.getElementById("sideUser").textContent = `${user?.name} • ${user?.role}`;
+    document.getElementById("whoami").textContent = `Login sebagai: ${user?.name} (${user?.role})`;
+
+    document.getElementById("btnLogout").addEventListener("click", async () => {
+      await logout();
+      window.location.href = "./login.html";
+    });
+
+    const errorBox = document.getElementById("error");
+    function showError(msg) {
+      errorBox.style.display = msg ? "block" : "none";
+      errorBox.textContent = msg || "";
+    }
+
+    // admin only
+    if (user?.role !== "admin") {
+      showError("Forbidden: hanya admin yang bisa mengakses halaman ini.");
+      throw new Error("admin only");
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id"); // edit mode kalau ada
+
+    const formTitle = document.getElementById("formTitle");
+    const formHint = document.getElementById("formHint");
+    const btnSave = document.getElementById("btnSave");
+
+    const form = document.getElementById("bookForm");
+    const categorySelect = document.getElementById("category_id");
+    const titleInput = document.getElementById("title");
+    const authorInput = document.getElementById("author");
+    const isbnInput = document.getElementById("isbn");
+    const totalInput = document.getElementById("stock_total");
+    const availInput = document.getElementById("stock_available");
+
+    async function loadCategories() {
+      const res = await apiFetch("/categories");
+      categorySelect.innerHTML = "";
+      for (const c of res.data) {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        categorySelect.appendChild(opt);
+      }
+    }
+
+    async function loadBookIfEdit() {
+      if (!id) return;
+
+      formTitle.textContent = "Edit Buku";
+      formHint.textContent = `Mengedit buku ID ${id}`;
+
+      const res = await apiFetch(`/books/${id}`);
+      const b = res.data;
+
+      // dukung 2 kemungkinan field
+      categorySelect.value = b.category_id ?? b.category?.id;
+      titleInput.value = b.title ?? "";
+      authorInput.value = b.author ?? "";
+      isbnInput.value = b.isbn ?? "";
+      totalInput.value = b.stock_total ?? 0;
+      availInput.value = b.stock_available ?? 0;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      showError("");
+
+      const payload = {
+        category_id: Number(categorySelect.value),
+        title: titleInput.value.trim(),
+        author: authorInput.value.trim(),
+        isbn: isbnInput.value.trim() || null,
+        stock_total: Number(totalInput.value),
+        stock_available: Number(availInput.value),
+      };
+
+      if (payload.stock_available > payload.stock_total) {
+        showError("stock_available tidak boleh lebih besar dari stock_total");
+        return;
+      }
+
+      try {
+        btnSave.disabled = true;
+        btnSave.textContent = "Menyimpan...";
+
+        if (!id) {
+          await apiFetch("/books", { method: "POST", body: payload });
+        } else {
+          await apiFetch(`/books/${id}`, { method: "PUT", body: payload });
+        }
+
+        window.location.href = "./books.html";
+      } catch (err) {
+        showError(err.message);
+        if (err.details) console.log("Validation details:", err.details);
+      } finally {
+        btnSave.disabled = false;
+        btnSave.textContent = "Simpan";
+      }
+    });
+
+    await loadCategories();
+    await loadBookIfEdit();
+
+    const navBooksMember = document.getElementById("navBooksMember");
+    const navBooksAdmin = document.getElementById("navBooksAdmin");
+
+    if (user?.role === "admin") {
+      navBooksAdmin.style.display = "flex";
+    } else {
+      navBooksMember.style.display = "flex";
+    }
+
+  </script>
+</body>
+
+</html>
