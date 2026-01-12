@@ -60,9 +60,10 @@ type Book {
 
 extend type Query {
   books(search: String): [Book!]!
-    @guard
+    @guard(with: ["sanctum"])
     @paginate(
       defaultCount: 10
       builder: "App\\GraphQL\\Builders\\BookBuilder@books"
     )
 }
+
