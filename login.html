@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SIMPUS - Login</title>
+  <link rel="stylesheet" href="./assets/css/main.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="card auth-card">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <div class="brand-title">SIMPUS</div>
+          <div class="muted">Digital Library System</div>
+        </div>
+      </div>
+
+      <h1>Login</h1>
+      <p>Masuk untuk mengelola dan melihat katalog perpustakaan.</p>
+
+      <form id="loginForm">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="contoh: admin@simpus.test" required />
+
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Minimal 6 karakter" minlength="6" required />
+
+        <button type="submit" id="btnLogin">Login</button>
+      </form>
+
+      <div class="hr"></div>
+      <p class="muted">Belum punya akun? <a href="./register.html">Register</a></p>
+
+      <div id="error" class="error"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { login } from "./assets/js/auth.js";
+
+    const form = document.getElementById("loginForm");
+    const errorBox = document.getElementById("error");
+    const btn = document.getElementById("btnLogin");
+
+    function showError(msg) {
+      errorBox.style.display = "block";
+      errorBox.textContent = msg;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.style.display = "none";
+      errorBox.textContent = "";
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      try {
+        btn.disabled = true;
+        btn.textContent = "Logging in...";
+        await login(email, password);
+        window.location.href = "./dashboard.html";
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Login";
+      }
+    });
+  </script>
+</body>
+</html>

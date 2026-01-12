@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>SIMPUS - Dashboard</title>
+  <link rel="stylesheet" href="./assets/css/main.css" />
+</head>
+
+<body>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="side-card">
+        <div class="brand">
+          <div class="logo"></div>
+          <div>
+            <div class="brand-title">SIMPUS</div>
+            <div class="brand-sub">Digital Library System</div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a href="./dashboard.html">🏠 Dashboard <small>Home</small></a>
+
+          <!-- Member -->
+          <a id="navBooksMember" href="./books.html" style="display:none;">📚 Katalog Buku <small>Browse</small></a>
+
+          <!-- Admin -->
+          <a id="navBooksAdmin" href="./books.html" style="display:none;">📚 Kelola Buku <small>Manage</small></a>
+
+          <a href="./loans.html">🧾 Loans <small>History</small></a>
+        </nav>
+
+
+        <div class="hr"></div>
+        <div class="muted" id="sideUser">Loading...</div>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div>
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <div class="logo"></div>
+            <div>
+              <div class="brand-title">Dashboard</div>
+              <div class="brand-sub" id="subtitle">Memuat sesi...</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <a class="btn ghost small" href="./books.html">Books</a>
+          <a class="btn ghost small" href="./loans.html">Loans</a>
+          <button id="btnLogout" class="btn small">Logout</button>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="container">
+          <div class="grid">
+            <div class="card">
+              <h1>Selamat Datang 👋</h1>
+              <p id="welcome">Loading...</p>
+              <div class="badges">
+                <span class="badge" id="badgeRole">role: -</span>
+                <span class="badge" id="badgeEmail">email: -</span>
+                <span class="badge ok" id="badgeSession">session: checking</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>Akses Cepat</h2>
+              <p class="muted" id="menuDesc">Masuk ke halaman utama.</p>
+
+              <div class="row" style="justify-content:flex-start;">
+                <a class="btn small" id="btnBooks" href="./books.html">Books</a>
+                <a class="btn ghost small" href="./loans.html">Riwayat</a>
+              </div>
+
+              <div class="hr"></div>
+              <p class="muted" id="adminNote" style="display:none;">
+                * Kamu admin: bisa tambah/edit/hapus buku.
+              </p>
+            </div>
+
+
+            <div class="card">
+              <h2>Ringkasan</h2>
+              <p class="muted">Data ringkas (opsional). Bisa ditambah nanti.</p>
+              <div class="row-left">
+                <span class="badge" id="kpiBooks">books: -</span>
+                <span class="badge" id="kpiLoans">loans: -</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>Status</h2>
+              <p class="muted" id="statusBox">Memeriksa API...</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from "./assets/js/guard.js";
+    import { getUser, logout, me } from "./assets/js/auth.js";
+    import { apiFetch } from "./assets/js/api.js";
+
+    await requireAuth();
+
+    const btnLogout = document.getElementById("btnLogout");
+    const welcome = document.getElementById("welcome");
+    const badgeRole = document.getElementById("badgeRole");
+    const badgeEmail = document.getElementById("badgeEmail");
+    const badgeSession = document.getElementById("badgeSession");
+    const statusBox = document.getElementById("statusBox");
+    const adminNote = document.getElementById("adminNote");
+    const subtitle = document.getElementById("subtitle");
+    const sideUser = document.getElementById("sideUser");
+
+    const kpiBooks = document.getElementById("kpiBooks");
+    const kpiLoans = document.getElementById("kpiLoans");
+
+    btnLogout.addEventListener("click", async () => {
+      await logout();
+      window.location.href = "./login.html";
+    });
+
+    // tampil cepat dari localStorage
+    let user = getUser();
+    if (user) {
+      welcome.textContent = `Halo, ${user.name}`;
+      badgeRole.textContent = `role: ${user.role}`;
+      badgeEmail.textContent = `email: ${user.email}`;
+      sideUser.textContent = `${user.name} • ${user.role}`;
+      subtitle.textContent = `Masuk sebagai ${user.role}`;
+      if (user.role === "admin") adminNote.style.display = "block";
+    }
+
+    try {
+      const res = await me();
+      user = res.data;
+
+      welcome.textContent = `Halo, ${user.name}`;
+      badgeRole.textContent = `role: ${user.role}`;
+      badgeEmail.textContent = `email: ${user.email}`;
+      sideUser.textContent = `${user.name} • ${user.role}`;
+      subtitle.textContent = `Masuk sebagai ${user.role}`;
+
+      badgeSession.textContent = "session: active";
+      badgeSession.className = "badge ok";
+      statusBox.textContent = "API terhubung ✅";
+
+      if (user.role === "admin") adminNote.style.display = "block";
+
+      // KPI ringan (biar dashboard ga kosong)
+      const books = await apiFetch("/books?per_page=1&page=1");
+      kpiBooks.textContent = `books: ${books.data.total}`;
+
+      const loans = await apiFetch("/loans");
+      kpiLoans.textContent = `loans: ${loans.data.total}`;
+
+    } catch (e) {
+      badgeSession.textContent = "session: invalid";
+      badgeSession.className = "badge danger";
+      statusBox.textContent = "Sesi tidak valid. Silakan login ulang.";
+    }
+
+    const btnBooks = document.getElementById("btnBooks");
+    const menuDesc = document.getElementById("menuDesc");
+
+    if (user?.role === "admin") {
+      btnBooks.textContent = "Kelola Buku";
+      menuDesc.textContent = "Kelola data buku (create, update, delete).";
+      adminNote.style.display = "block";
+    } else {
+      btnBooks.textContent = "Lihat Buku";
+      menuDesc.textContent = "Lihat katalog buku dan pinjam jika tersedia.";
+      adminNote.style.display = "none";
+    }
+
+    const navBooksMember = document.getElementById("navBooksMember");
+    const navBooksAdmin = document.getElementById("navBooksAdmin");
+
+    if (user?.role === "admin") {
+      navBooksAdmin.style.display = "flex";
+    } else {
+      navBooksMember.style.display = "flex";
+    }
+
+
+  </script>
+</body>
+
+</html>

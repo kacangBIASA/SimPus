@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SIMPUS - Loans</title>
+  <link rel="stylesheet" href="./assets/css/main.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="side-card">
+        <div class="brand">
+          <div class="logo"></div>
+          <div>
+            <div class="brand-title">SIMPUS</div>
+            <div class="brand-sub">Digital Library System</div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a href="./dashboard.html">🏠 Dashboard <small>Home</small></a>
+
+          <a id="navBooksMember" href="./books.html" style="display:none;">📚 Katalog Buku <small>Browse</small></a>
+          <a id="navBooksAdmin" href="./books.html" style="display:none;">📚 Kelola Buku <small>Manage</small></a>
+
+          <a class="active" href="./loans.html">🧾 Loans <small>History</small></a>
+        </nav>
+
+        <div class="hr"></div>
+        <div class="muted" id="sideUser">Loading...</div>
+      </div>
+    </aside>
+
+    <div>
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <div class="logo"></div>
+            <div>
+              <div class="brand-title">Loans</div>
+              <div class="brand-sub">Riwayat peminjaman, pengembalian, dan denda</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <a class="btn ghost small" href="./dashboard.html">Dashboard</a>
+          <a class="btn ghost small" href="./books.html">Books</a>
+          <button id="btnLogout" class="btn small">Logout</button>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="container">
+          <div class="card">
+            <div class="row">
+              <div>
+                <h1>Riwayat Peminjaman</h1>
+                <p class="muted" id="desc">Memuat...</p>
+              </div>
+              <span class="badge" id="roleBadge">role: -</span>
+            </div>
+
+            <div id="error" class="error" style="display:none;"></div>
+
+            <table class="table" id="tableLoans">
+              <thead>
+                <tr>
+                  <th style="width:70px;">ID</th>
+                  <th>Buku</th>
+                  <th style="width:120px;">Status</th>
+                  <th style="width:180px;">Borrowed</th>
+                  <th style="width:180px;">Due</th>
+                  <th style="width:180px;">Returned</th>
+                  <th style="width:150px;">Fine</th>
+                  <th style="width:170px;">Aksi</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+
+            <div class="row" style="justify-content:flex-end; margin-top:12px;">
+              <button id="btnRefresh" class="btn ghost small">Refresh</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from "./assets/js/guard.js";
+    import { logout, getUser } from "./assets/js/auth.js";
+    import { apiFetch } from "./assets/js/api.js";
+
+    await requireAuth();
+
+    const user = getUser();
+    document.getElementById("sideUser").textContent = `${user?.name} • ${user?.role}`;
+    document.getElementById("roleBadge").textContent = `role: ${user?.role}`;
+
+    const navBooksMember = document.getElementById("navBooksMember");
+    const navBooksAdmin = document.getElementById("navBooksAdmin");
+    if (user?.role === "admin") navBooksAdmin.style.display = "flex";
+    else navBooksMember.style.display = "flex";
+
+    document.getElementById("desc").textContent =
+      user?.role === "admin"
+        ? "Admin hanya memonitor semua transaksi (tidak bisa return/bayar denda)."
+        : "Member dapat return dan membayar denda (dummy).";
+
+    document.getElementById("btnLogout").addEventListener("click", async () => {
+      await logout();
+      window.location.href = "./login.html";
+    });
+
+    const tbody = document.querySelector("#tableLoans tbody");
+    const errorBox = document.getElementById("error");
+    const btnRefresh = document.getElementById("btnRefresh");
+
+    function showError(msg){
+      errorBox.style.display = msg ? "block" : "none";
+      errorBox.textContent = msg || "";
+    }
+
+    function fmt(dt){
+      if (!dt) return "-";
+      return new Date(dt).toLocaleString();
+    }
+
+    function statusBadge(status){
+      if (status === "RETURNED") return `<span class="badge ok">${status}</span>`;
+      if (status === "BORROWED") return `<span class="badge warn">${status}</span>`;
+      return `<span class="badge">${status}</span>`;
+    }
+
+    function rupiah(n){
+      const x = Number(n || 0);
+      return "Rp " + x.toLocaleString("id-ID");
+    }
+
+    async function loadLoans(){
+      showError("");
+      tbody.innerHTML = `<tr><td colspan="8">Loading...</td></tr>`;
+
+      try{
+        const res = await apiFetch("/loans"); // paginated: res.data.data
+        const paged = res.data;
+
+        tbody.innerHTML = "";
+        if (!paged.data.length){
+          tbody.innerHTML = `<tr><td colspan="8">Tidak ada data</td></tr>`;
+          return;
+        }
+
+        for (const l of paged.data){
+          const title = l.book?.title ?? "-";
+          const isReturned = !!l.returned_at;
+
+          // Fine: kalau sudah returned pakai fine_amount dari loan, kalau belum bisa ambil estimasi dari endpoint fine
+          let fineText = "-";
+          if (isReturned) {
+            fineText = rupiah(l.fine_amount ?? 0) + (l.fine_paid ? " ✅" : "");
+          } else {
+            // optional: ambil estimasi fine (biar tema “denda” terlihat)
+            try {
+              const fineRes = await apiFetch(`/loans/${l.id}/fine`);
+              const est = fineRes.data.estimated_fine_if_return_now;
+              if (est !== null) fineText = rupiah(est);
+            } catch {
+              fineText = "-";
+            }
+          }
+
+          // ✅ admin tidak boleh return / bayar denda
+          const canReturn = (user?.role !== "admin") && !isReturned;
+          const canPayFine = (user?.role !== "admin") && isReturned && (Number(l.fine_amount || 0) > 0) && !l.fine_paid;
+
+          const actions = [];
+          if (canReturn) actions.push(`<a href="#" data-ret="${l.id}">Return</a>`);
+          if (canPayFine) actions.push(`<a href="#" data-pay="${l.id}">Pay Fine</a>`);
+          if (!actions.length) actions.push(`-`);
+
+          tbody.insertAdjacentHTML("beforeend", `
+            <tr>
+              <td>${l.id}</td>
+              <td>${title}</td>
+              <td>${statusBadge(l.status)}</td>
+              <td>${fmt(l.borrowed_at)}</td>
+              <td>${fmt(l.due_at)}</td>
+              <td>${fmt(l.returned_at)}</td>
+              <td><span class="badge">${fineText}</span></td>
+              <td class="actions">${actions.join(" | ")}</td>
+            </tr>
+          `);
+        }
+
+        // Return handler
+        tbody.querySelectorAll("[data-ret]").forEach(a => {
+          a.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const loanId = Number(a.getAttribute("data-ret"));
+            if (!confirm(`Return loan #${loanId}?`)) return;
+
+            try{
+              await apiFetch("/loans/return", { method:"POST", body:{ loan_id: loanId }});
+              await loadLoans();
+            } catch (err){
+              showError(err.message);
+            }
+          });
+        });
+
+        // Pay fine handler
+        tbody.querySelectorAll("[data-pay]").forEach(a => {
+          a.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const loanId = Number(a.getAttribute("data-pay"));
+            if (!confirm(`Bayar denda untuk loan #${loanId}? (dummy)`)) return;
+
+            try{
+              await apiFetch(`/loans/${loanId}/pay-fine`, { method:"POST" });
+              await loadLoans();
+            } catch (err){
+              showError(err.message);
+            }
+          });
+        });
+
+      } catch(err){
+        tbody.innerHTML = "";
+        showError(err.message);
+      }
+    }
+
+    btnRefresh.addEventListener("click", loadLoans);
+    await loadLoans();
+  </script>
+</body>
+</html>
