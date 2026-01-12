@@ -1,0 +1,255 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SIMPUS - Book Detail</title>
+  <link rel="stylesheet" href="./assets/css/main.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="side-card">
+        <div class="brand">
+          <div class="logo"></div>
+          <div>
+            <div class="brand-title">SIMPUS</div>
+            <div class="brand-sub">Digital Library System</div>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a href="./dashboard.html">🏠 Dashboard <small>Home</small></a>
+
+          <a id="navBooksMember" class="active" href="./books.html" style="display:none;">📚 Katalog Buku <small>Browse</small></a>
+          <a id="navBooksAdmin" class="active" href="./books.html" style="display:none;">📚 Kelola Buku <small>Manage</small></a>
+
+          <a href="./loans.html">🧾 Loans <small>History</small></a>
+        </nav>
+
+        <div class="hr"></div>
+        <div class="muted" id="sideUser">Loading...</div>
+      </div>
+    </aside>
+
+    <div>
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="brand">
+            <div class="logo"></div>
+            <div>
+              <div class="brand-title">Book Detail</div>
+              <div class="brand-sub">Detail buku + rekomendasi</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <a class="btn ghost small" href="./books.html">Back to Books</a>
+          <a class="btn ghost small" href="./loans.html">Loans</a>
+          <button id="btnLogout" class="btn small">Logout</button>
+        </div>
+      </div>
+
+      <main class="main">
+        <div class="container">
+          <div id="error" class="error" style="display:none;"></div>
+
+          <div class="grid">
+            <!-- Detail -->
+            <div class="card">
+              <h1 id="title">Loading...</h1>
+              <p class="muted" id="subtitle">Memuat data...</p>
+
+              <div class="badges" style="margin-top:12px;">
+                <span class="badge" id="badgeCategory">category: -</span>
+                <span class="badge" id="badgeISBN">isbn: -</span>
+                <span class="badge" id="badgeStock">stock: -</span>
+              </div>
+
+              <div class="hr"></div>
+
+              <div class="row">
+                <div class="row-left">
+                  <button id="btnBorrow" class="btn small" style="display:none;">Pinjam Buku</button>
+                  <a id="btnEdit" class="btn ghost small" href="#" style="display:none;">Edit</a>
+                </div>
+                <button id="btnDelete" class="btn danger small" style="display:none;">Delete</button>
+              </div>
+
+              <p class="muted" id="hint" style="margin-top:10px;"></p>
+            </div>
+
+            <!-- Rekomendasi -->
+            <div class="card">
+              <h2>Rekomendasi</h2>
+              <p class="muted">Buku terkait (kategori sama / terbaru).</p>
+              <div class="hr"></div>
+
+              <div id="recs" class="muted">Memuat rekomendasi...</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <h2>User</h2>
+            <p class="muted" id="whoami">Memuat user...</p>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth } from "./assets/js/guard.js";
+    import { getUser, logout } from "./assets/js/auth.js";
+    import { apiFetch } from "./assets/js/api.js";
+
+    await requireAuth();
+
+    const user = getUser();
+    document.getElementById("sideUser").textContent = `${user?.name} • ${user?.role}`;
+    document.getElementById("whoami").textContent = `Login sebagai: ${user?.name} (${user?.role})`;
+
+    const navBooksMember = document.getElementById("navBooksMember");
+    const navBooksAdmin = document.getElementById("navBooksAdmin");
+    if (user?.role === "admin") navBooksAdmin.style.display = "flex";
+    else navBooksMember.style.display = "flex";
+
+    document.getElementById("btnLogout").addEventListener("click", async () => {
+      await logout();
+      window.location.href = "./login.html";
+    });
+
+    const errorBox = document.getElementById("error");
+    const titleEl = document.getElementById("title");
+    const subtitleEl = document.getElementById("subtitle");
+    const badgeCategory = document.getElementById("badgeCategory");
+    const badgeISBN = document.getElementById("badgeISBN");
+    const badgeStock = document.getElementById("badgeStock");
+    const hint = document.getElementById("hint");
+
+    const btnBorrow = document.getElementById("btnBorrow");
+    const btnEdit = document.getElementById("btnEdit");
+    const btnDelete = document.getElementById("btnDelete");
+    const recsBox = document.getElementById("recs");
+
+    function showError(msg){
+      errorBox.style.display = msg ? "block" : "none";
+      errorBox.textContent = msg || "";
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, m => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+      }[m]));
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    if (!id) {
+      showError("ID buku tidak ditemukan.");
+      throw new Error("Missing id");
+    }
+
+    let currentBook = null;
+
+    async function loadDetail() {
+      showError("");
+      try {
+        const res = await apiFetch(`/books/${id}`);
+        const b = res.data;
+        currentBook = b;
+
+        titleEl.textContent = b.title;
+        subtitleEl.textContent = `Author: ${b.author}`;
+
+        badgeCategory.textContent = `category: ${b.category?.name ?? "-"}`;
+        badgeISBN.textContent = `isbn: ${b.isbn ?? "-"}`;
+        badgeStock.textContent = `stock: ${b.stock_available}/${b.stock_total}`;
+
+        // actions role-based
+        btnBorrow.style.display = "none";
+        btnEdit.style.display = "none";
+        btnDelete.style.display = "none";
+
+        if (user?.role === "admin") {
+          btnEdit.style.display = "inline-block";
+          btnEdit.href = `./book-form.html?id=${b.id}`;
+          btnDelete.style.display = "inline-block";
+          hint.textContent = "Admin dapat mengedit atau menghapus buku.";
+        } else {
+          btnBorrow.style.display = "inline-block";
+          btnBorrow.disabled = b.stock_available < 1;
+          hint.textContent = b.stock_available < 1
+            ? "Stok habis. Tidak bisa dipinjam."
+            : "Klik Pinjam Buku untuk membuat transaksi peminjaman.";
+        }
+
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function loadRecommendations(){
+      recsBox.textContent = "Memuat rekomendasi...";
+      try{
+        const res = await apiFetch(`/books/${id}/recommendations?limit=5`);
+        const list = res.data.recommendations ?? [];
+        if (!list.length){
+          recsBox.innerHTML = `<div class="muted">Tidak ada rekomendasi.</div>`;
+          return;
+        }
+
+        recsBox.innerHTML = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Judul</th>
+                <th style="width:120px;">Stock</th>
+                <th style="width:90px;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map(b => `
+                <tr>
+                  <td>${escapeHtml(b.title)}<div class="muted" style="font-size:12px;">${escapeHtml(b.author)}</div></td>
+                  <td><span class="badge">${b.stock_available}/${b.stock_total}</span></td>
+                  <td class="actions"><a href="./book-detail.html?id=${b.id}">Detail</a></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+      } catch (err){
+        recsBox.innerHTML = `<div class="muted">Gagal memuat rekomendasi: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    btnBorrow.addEventListener("click", async () => {
+      showError("");
+      try {
+        await apiFetch("/loans/borrow", { method:"POST", body:{ book_id: Number(id) }});
+        alert("Berhasil meminjam buku!");
+        await loadDetail();
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+
+    btnDelete.addEventListener("click", async () => {
+      showError("");
+      if (!confirm(`Hapus buku "${currentBook?.title}"?`)) return;
+
+      try{
+        await apiFetch(`/books/${id}`, { method:"DELETE" });
+        alert("Buku berhasil dihapus.");
+        window.location.href = "./books.html";
+      } catch (err){
+        showError(err.message);
+      }
+    });
+
+    await loadDetail();
+    await loadRecommendations();
+  </script>
+</body>
+</html>
